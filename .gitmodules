@@ -1,0 +1,3 @@
+[submodule "vendor/LESSON-OS"]
+	path = vendor/LESSON-OS
+	url = ecs:/srv/git/LESSON-OS.git
