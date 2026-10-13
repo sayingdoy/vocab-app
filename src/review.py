@@ -158,6 +158,10 @@ def is_due(w: dict, ref: dt.date) -> bool:
     本实现经 `as_date` 归一（坏值 → None → 到期），旧行为不崩。
     该边界差异在 bb-prep 侧同样存在（其 `is_due` 亦保留本地）——
     属内核已知边界，不擅自改内核（改内核须走 audit-os + bump 流程）。
+
+    2026-10-13 后续：该边界**已由内核 0.5.1 修复**（LESSON-OS PATCH，
+    独立审计通过；本仓 submodule 仍钉 0.5.0，升级是 P2+ 决策）。
+    修复后两侧语义等价 → 保留本地**不变**（无重委托动因）。
     """
     d = as_date(w.get("due"))
     return d is None or d <= ref

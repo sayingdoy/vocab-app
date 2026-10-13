@@ -786,3 +786,12 @@ bb-prep 已于 2026-10-13 把判分/排期委托给 LESSON-OS 内核（P1-B3/A3�
 - `src/review.py` 新增内核 bootstrap（路径按 `__file__` 解析，不用 CWD）；
   换机器克隆后须 `git submodule update --init --recursive`，否则
   `ImportError` 带修复指引（对齐 bb-prep 行为）。
+
+---
+
+> **2026-10-13 后续（内核 0.5.1）**：上文「内核 `is_due` 对 int/bool due 直接比较会
+> TypeError 的边界差异」**已由内核 0.5.1 修复**（LESSON-OS PATCH，独立审计轮次
+> 见其 `Project Audit/Archive/v0.5.1_is_due边界修复_R1_*`；三方等价电池 64 例
+> 0 差异）。本仓 submodule 仍钉 `948b419`＝0.5.0（该版本行为与上文记录一致），
+> **升级至 0.5.1 是 P2+ 决策**——升级后 `review.is_due` 保留本地不变
+> （修复只保证内核可安全委托，无重委托动因）。
