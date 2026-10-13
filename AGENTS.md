@@ -1,6 +1,6 @@
 # AGENTS.md — vocab-app 项目宪法
 
-> 版本 0.3 | 建立 2026-09-11 | 修订 2026-10-05 | Owner: Jason
+> 版本 0.4 | 建立 2026-09-11 | 修订 2026-10-13 | Owner: Jason
 > 本文件是项目级最高约束。与 SOUL.md 无关（SOUL.md 是 agent 人格文件）。
 > 修改本文件需 Jason 确认。
 >
@@ -36,7 +36,7 @@ D:\Projects\vocab-app\
 ├── .keys\<账户>\<日期>.txt         ← 练习密钥（题号→词），**刻意放在交付成果之外**
 ├── src\                           ← 【开发物】
 │   ├── prompts\ljg-word.md        ← 解词规范（项目内提示词资产）
-│   ├── review.py                  ← 内核：词条读写、阶梯、判定、题型、统计
+│   ├── review.py                  ← 内核：词条读写、题型、统计（阶梯/判定/日期解析委托 LESSON-OS 共享内核，v0.4 起）
 │   ├── practice.py                ← 出卷：生成练习笔记 + 密钥
 │   ├── settle.py                  ← 结算：扫描、判定、回写、追加成绩单
 │   └── import_words.py            ← 导入：外部 AI 会话 → 新词条（ADR-0011）
