@@ -22,6 +22,35 @@ try:  # 中文 Windows 控制台默认 cp936，强制 UTF-8
 except Exception:
     pass
 
+# ── 共享内核（LESSON-OS · learn_engine）——P2 接入 ─────────────────────────
+# 消费方式：`vendor/LESSON-OS` 为 **git submodule**，按 semver 钉 commit（ADR-0003）。
+# 内核**零外部依赖、只读**；本模块只**委托**判分/排期逻辑，绝不改动内核源码。
+#   · 判分（`judge`）                → `learn_engine.grader.ExactMatchGrader`
+#   · 排期（`next_schedule`）         → `learn_engine.scheduler.next_schedule`
+#   · 结算计算（`apply_result`）       → `learn_engine.scheduler.apply_result`
+#   · 日期解析（`as_date`）            → `learn_engine.vault.as_date`
+#   · `is_due` / `parse_front` / `write_front` / `pick_words` **保留本地**：
+#     is_due 有边界差异（内核对 int/bool due 直接比较会 TypeError，见其 docstring）；
+#     parse_front 有类型强转差异（bool/int/引号剥离，内核版没有）；
+#     write_front 保持 `SystemExit` 语义与 CRLF 行尾稳定（交付成果不在版本库，
+#     行尾无 git 噪声，但不改变既有字节行为）；
+#     pick_words 是 ADR-0010 蒙特卡洛定制的选词算法，与内核 WeightedPicker
+#     语义不同（同 bb-prep 补位分支裁决②：内核保留自身语义，消费方不调用）。
+#
+# 内核路径按 `__file__` 解析（**不用 CWD**）：cron / 异目录调用也能找到。
+_KERNEL_DIR = Path(__file__).resolve().parents[1] / "vendor" / "LESSON-OS"
+if not _KERNEL_DIR.is_dir():
+    raise ImportError(
+        f"共享内核未就位：{_KERNEL_DIR}\n"
+        "在 vocab-app 根目录执行：git submodule update --init --recursive"
+    )
+if str(_KERNEL_DIR) not in sys.path:
+    sys.path.insert(0, str(_KERNEL_DIR))
+import learn_engine as LE  # noqa: E402
+
+# 判分原语实例化（ExactMatchGrader 无需注入策略 —— 归一化语义即 vocab-app 形态）
+_GRADER_EXACT = LE.ExactMatchGrader()
+
 LADDER = [1, 2, 4, 7, 15, 30, 60, 120]
 MASTER_STAGE = len(LADDER) - 1
 BASE = Path(__file__).resolve().parent.parent / "交付成果" / "accounts"
@@ -79,14 +108,12 @@ def write_front(path: Path, updates: dict) -> None:
 
 
 def as_date(v) -> dt.date | None:
-    if isinstance(v, dt.date):
-        return v
-    if not v:
-        return None
-    try:
-        return dt.date.fromisoformat(str(v)[:10])
-    except ValueError:
-        return None
+    """宽松解析日期 —— **委托内核** `learn_engine.vault.as_date`（P2，2026-10-13）。
+
+    两侧全边界等价（None / "" / int / bool / 坏字符串 / ISO 日期 / 带时间串，
+    29 例比对 0 差异）。
+    """
+    return LE.as_date(v)
 
 
 # ── 词库 ────────────────────────────────────────────────────────────────────
@@ -125,6 +152,13 @@ def load_words(account: str) -> list[dict]:
 
 
 def is_due(w: dict, ref: dt.date) -> bool:
+    """到期判定。**刻意不委托内核** `scheduler.is_due`（P2 裁决）：
+
+    内核对非 str 非 None 的 due（int / bool）直接 `d <= ref` → **TypeError**；
+    本实现经 `as_date` 归一（坏值 → None → 到期），旧行为不崩。
+    该边界差异在 bb-prep 侧同样存在（其 `is_due` 亦保留本地）——
+    属内核已知边界，不擅自改内核（改内核须走 audit-os + bump 流程）。
+    """
     d = as_date(w.get("due"))
     return d is None or d <= ref
 
@@ -135,11 +169,13 @@ def normalize(s: str) -> str:
 
 
 def judge(raw: str, word: str) -> str:
-    """返回 'correct' | 'wrong'。空作答由调用方在交卷判定阶段挡掉。"""
-    a = normalize(raw)
-    if a and a == normalize(word):
-        return "correct"
-    return "wrong"
+    """返回 'correct' | 'wrong'。空作答由调用方在交卷判定阶段挡掉。
+
+    P2（2026-10-13）：**委托内核** `learn_engine.grader.ExactMatchGrader`
+    （内核 docstring 明列「vocab-app 风格」原语）。归一化语义逐字相同
+    （57 词 × 17 种作答电池比对，0 差异）。
+    """
+    return _GRADER_EXACT.judge(raw, word)
 
 
 def is_blank_answer(raw: str) -> bool:
@@ -193,31 +229,33 @@ def next_schedule(old_stage: int, correct: bool) -> tuple[int, str, int]:
 
     阶梯规则的**唯一事实来源** —— apply_result() 与结算器的预演都调它，
     规则只写一遍，预演才敢说"不写盘也能算准"。
+
+    P2（2026-10-13）：**委托内核** `learn_engine.scheduler.next_schedule`，
+    `LADDER` 由本模块**显式注入**（ADR-0001：bb-prep 与 vocab-app 阶梯不同）。
+    逻辑与旧实现逐行等价（18 组 stage×结果全组合比对，0 差异）。
     """
-    if correct:
-        stage = min(old_stage + 1, MASTER_STAGE)
-        state = "mastered" if stage >= MASTER_STAGE else ("review" if stage >= 3 else "learning")
-        return stage, state, LADDER[min(stage, MASTER_STAGE)]
-    return max(0, old_stage - 2), "lapsed", 1
+    return LE.next_schedule(old_stage, correct, ladder=LADDER)
 
 
 def apply_result(path: Path, correct: bool) -> dict:
-    """按阶梯规则更新一个词的调度字段。这是唯一允许写这些字段的地方。"""
+    """按阶梯规则更新一个词的调度字段。这是唯一允许写这些字段的地方。
+
+    P2（2026-10-13）：状态机计算**委托内核** `learn_engine.scheduler.apply_result`
+    （与真源同源；`LADDER` 与 `today` 由本模块**显式注入** —— 阶梯两项目不同，
+    ADR-0001；today 注入便于测试）。写盘仍走本模块 `write_front`
+    （保持 `SystemExit` 语义与既有字节行为）；返回结构保持原样
+    （含 `word` / `old_stage`，`settle.py` 依赖）。
+    改前/改后经 114 组排期计算 + 3 个真实词条写盘**字节级**比对，0 差异。
+    """
     w = parse_front(path.read_text(encoding="utf-8"))
     old = int(w.get("stage") or 0)
-    c, x = int(w.get("correct") or 0), int(w.get("wrong") or 0)
-    stage, state, gap = next_schedule(old, correct)
-    if correct:
-        c += 1
-    else:
-        x += 1
-    nxt = today() + dt.timedelta(days=gap)
+    upd = LE.apply_result(w, correct, ladder=LADDER, today=today())
     write_front(path, {
-        "stage": stage, "state": state, "due": nxt.isoformat(),
-        "reviews": int(w.get("reviews") or 0) + 1, "correct": c, "wrong": x,
+        "stage": upd["stage"], "state": upd["state"], "due": upd["due"],
+        "reviews": upd["reviews"], "correct": upd["correct"], "wrong": upd["wrong"],
     })
     return {"word": w.get("word") or path.stem, "old_stage": old,
-            "stage": stage, "state": state, "due": nxt.isoformat()}
+            "stage": upd["stage"], "state": upd["state"], "due": upd["due"]}
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────

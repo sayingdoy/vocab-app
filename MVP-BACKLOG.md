@@ -1,6 +1,6 @@
 # MVP-BACKLOG — vocab-app
 
-> 版本 0.3 | 2026-10-05
+> 版本 0.4 | 2026-10-13
 
 ## 已交付（v0.1 骨架）
 
@@ -43,6 +43,21 @@
 - [x] `src/import_words.py`：扫描 `deepseek-word*.md`（SyncNos 同步的 DeepSeek 对话全文），只解析 assistant 块，把新词按现有 49 词的规范结构落库；已在库即跳过（一个字节不动），出生初始化调度字段后绝不再碰（ADR-0011）
 - [x] cron 薄包装 `D:\hermes\data\scripts\vocab-import.py`（每 30 分钟、`--no-agent`、零 token，由父代理建 cron）
 - [x] 确定性自测 25 项全 PASS；真实源 `--dry-run` 精确报 5 词且幂等；`_selftest` 端到端后逐字节恢复
+
+## v0.4 — 接入 LESSON-OS 共享内核（2026-10-13）
+
+- [x] submodule `vendor/LESSON-OS`：`b145b21`（v0.1.0）→ `948b419`（**v0.5.0**）
+- [x] `src/review.py` 四处委托内核（判分 / 排期 / 结算计算 / 日期解析）：
+  `judge` → `ExactMatchGrader`；`next_schedule` / `apply_result` →
+  `scheduler`（LADDER 与 today **显式注入**，ADR-0001）；`as_date` → `vault.as_date`
+- [x] 保留本地：`is_due`（内核对 int/bool due 直接比较会 TypeError 的边界差异）、
+  `parse_front`（类型强转差异）、`write_front`（SystemExit 语义 + 字节行为不变）、
+  `pick_words`（ADR-0010 定制算法，与内核 WeightedPicker 语义不同）
+- [x] 验收（A3 式）：改前基线快照 → 改后同电池复跑，**1162 项 0 差异**
+  （next_schedule 18 / judge 969 / as_date 29 / is_due 29 / apply_result 114 /
+  写盘字节 3）；`_selftest` 端到端夹具结算 stdout / 笔记内容 / 词条 sha256
+  全部一致；jason 账户 `settle --dry-run` 输出逐字相同
+- [x] 内核消费方达 2 个（bb-prep + vocab-app）→ LESSON-OS `maturity: adopted`
 
 ## 明确不做
 

@@ -722,3 +722,67 @@ take_new = min(nn, len(new_pool), plen - take_rev)
   删除夹具 → `_selftest` 50 个文件**逐字节恢复**（前后 sha256 清单完全一致）。
 - jason 账户 65 个文件 sha256 零变化；`src/practice.py`、`src/settle.py`、`src/review.py`
   未改动；源对话文件 sha256 零变化（全程只读）。
+
+---
+
+## ADR-0012 — src/ 判分与排期委托 LESSON-OS 共享内核（P2）
+
+- 状态：已采纳
+- 日期：2026-10-13
+- 决策人：Jason（Owner）／承接 agent
+
+### 背景
+
+bb-prep 已于 2026-10-13 把判分/排期委托给 LESSON-OS 内核（P1-B3/A3），
+内核 0.5.0 的 `ExactMatchGrader` docstring 明列「vocab-app 风格」——
+`src/review.py` 的 `judge` / `next_schedule` / `apply_result` / `as_date`
+与内核同源实现已并存数月，构成事实上的双 SSOT。P2 启动接入，消除重复。
+
+### 决策
+
+`src/review.py` 四处委托内核（submodule `vendor/LESSON-OS` 钉 `948b419` = 0.5.0）：
+
+| 委托 | 内核符号 | 注入的策略 |
+|---|---|---|
+| `judge` | `grader.ExactMatchGrader` | 无（归一化即 vocab-app 语义） |
+| `next_schedule` | `scheduler.next_schedule` | `LADDER`（ADR-0001：两项目阶梯不同） |
+| `apply_result` | `scheduler.apply_result` | `LADDER` + `today` |
+| `as_date` | `vault.as_date` | 无 |
+
+**保留本地**（逐条有据，非偷懒）：
+
+- `is_due`：内核对非 str 非 None 的 due（int/bool）直接 `d <= ref` 会
+  **TypeError**；本实现经 `as_date` 归一返回 True。bb-prep 同样保留本地。
+  属内核已知边界——**不擅自改内核**（改内核须 audit-os + bump）。
+- `parse_front`：本地版有类型强转（bool/int/引号剥离），内核版没有。
+- `write_front`：保持 `SystemExit` 语义与既有字节行为（交付成果不在版本库，
+  行尾无 git 噪声，但字节行为不变是硬验收）。
+- `pick_words`：ADR-0010 蒙特卡洛定制的选词算法，与内核 `WeightedPicker`
+  语义不同（同 bb-prep 补位分支裁决②：内核保留自身语义，消费方不调用）。
+
+### 理由
+
+- **双 SSOT 消融**：四处同源实现收敛到内核一处，规则只写一遍。
+- **验收先行（A3 式）**：改前基线快照 → 改后同电池复跑，1162 项 0 差异
+  （judge 969 / next_schedule 18 / apply_result 114 / as_date+is_due 58 /
+  写盘字节 3）；端到端夹具（建临时账户 → 真实结算 → 逐字节比对 → 删夹具恢复）
+  stdout / 笔记内容 / 词条 sha256 全一致。
+- **Karpathy 规则 3（精准修改）**：只委托已验证等价的路径，差异点逐条留本地
+  并写明原因，不"顺手统一"。
+
+### 被否决的方案
+
+- **连 `is_due` / `parse_front` / `write_front` 一并委托**：否决——前两者有
+  实测边界/类型差异（见上），write_front 的 LF 强制会改变既有字节行为；
+  bb-prep 参考实现同样只委托排期+判分。
+- **顺手修内核 `is_due` 的 TypeError 边界**：否决——改内核须走
+  audit-os 流程 + 版本 bump（LESSON-OS AGENTS.md 铁律），P2 范围外；
+  已在 LESSON-OS 侧登记为后续候选。
+
+### 后果
+
+- vocab-app 版本 0.3 → 0.4（AGENTS.md §八：`src/` 功能变更 = MINOR）。
+- LESSON-OS 消费方达 2 个 → 内核 `maturity: implemented → adopted`。
+- `src/review.py` 新增内核 bootstrap（路径按 `__file__` 解析，不用 CWD）；
+  换机器克隆后须 `git submodule update --init --recursive`，否则
+  `ImportError` 带修复指引（对齐 bb-prep 行为）。
